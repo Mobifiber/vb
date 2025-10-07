@@ -10,8 +10,14 @@ async function hashPassword(password: string): Promise<string> {
   return hashHex;
 }
 
-const ACCOUNT_STORAGE_KEY = 'TMTH_ACCOUNT_DATA'; // For user, quota, dictionaries (simulates server DB)
-const WORKSPACE_STORAGE_KEY = 'TMTH_WORKSPACE_DATA'; // For projects (local to the machine)
+// --- TÁCH BIỆT DỮ LIỆU ---
+// Kho lưu trữ dữ liệu tài khoản, mô phỏng việc lưu trên một máy chủ tập trung (như Vercel).
+// Dữ liệu này (user, quota, dictionaries) sẽ được giữ lại kể cả khi người dùng đăng nhập từ máy khác (trong môi trường mô phỏng).
+const ACCOUNT_STORAGE_KEY = 'TMTH_ACCOUNT_DATA_SERVER_SIMULATED'; 
+
+// Kho lưu trữ dữ liệu công việc (dự án), được lưu cục bộ trên máy của người dùng.
+// Điều này đảm bảo an toàn, riêng tư và không làm nặng hệ thống chung.
+const WORKSPACE_STORAGE_KEY = 'TMTH_WORKSPACE_DATA_LOCAL_ONLY';
 
 interface AccountData {
     users: User[];
@@ -42,7 +48,9 @@ function saveWorkspaceState() {
 
 async function initializeDatabase() {
     try {
-        // 1. Initialize Account Data (simulates server)
+        // --- PHẦN 1: Tải Dữ liệu Tài khoản (Mô phỏng Server) ---
+        // Dữ liệu này (người dùng, mật khẩu, từ điển) được lưu riêng để giả lập
+        // việc chúng được lưu trên một máy chủ tập trung.
         const storedAccountData = localStorage.getItem(ACCOUNT_STORAGE_KEY);
         if (storedAccountData) {
             const data: AccountData = JSON.parse(storedAccountData);
@@ -70,7 +78,9 @@ async function initializeDatabase() {
             saveAccountState();
         }
         
-        // 2. Initialize Workspace Data (local to machine)
+        // --- PHẦN 2: Tải Dữ liệu Công việc (Lưu tại Trình duyệt) ---
+        // Dữ liệu này (các dự án trong không gian làm việc) chỉ được lưu trên máy tính
+        // của người dùng để đảm bảo an toàn và riêng tư.
         const storedProjects = localStorage.getItem(WORKSPACE_STORAGE_KEY);
         if (storedProjects) {
             projects = JSON.parse(storedProjects);
@@ -115,7 +125,7 @@ class UserService {
         const index = users.findIndex(u => u.id === updatedUser.id);
         if (index !== -1) {
             users[index] = { ...users[index], ...updatedUser };
-            saveAccountState(); // Save account data
+            saveAccountState(); // Lưu dữ liệu tài khoản (mô phỏng server)
             const { password, ...userWithoutPassword } = users[index];
             return userWithoutPassword;
         }
@@ -129,7 +139,7 @@ class UserService {
             const hashedOldPass = await hashPassword(oldPass);
             if (user.password === hashedOldPass) {
                 user.password = await hashPassword(newPass);
-                saveAccountState(); // Save account data
+                saveAccountState(); // Lưu dữ liệu tài khoản (mô phỏng server)
                 return true;
             }
         }
@@ -142,7 +152,7 @@ class UserService {
         const user = users.find(u => u.id === userId);
         if(user) {
             user.password = await hashPassword(newPassword);
-            saveAccountState(); // Save account data
+            saveAccountState(); // Lưu dữ liệu tài khoản (mô phỏng server)
             return newPassword;
         }
         throw new Error("User not found");
@@ -161,11 +171,11 @@ class UserService {
             content,
         };
         dictionaries.push(newDict);
-        saveAccountState(); // Save account data
+        saveAccountState(); // Lưu dữ liệu tài khoản (mô phỏng server)
         return newDict;
     }
     
-    // --- Project Methods (Workspace Data) ---
+    // --- Các phương thức cho Dữ liệu Công việc (Lưu cục bộ) ---
     async saveResultToWorkspace(projectName: string, resultType: ProjectResultType, content: string): Promise<Project> {
         await this.ensureInitialized();
         const now = new Date().toISOString();
@@ -194,7 +204,7 @@ class UserService {
             }
             projects.unshift(project); // Add to the top
         }
-        saveWorkspaceState();
+        saveWorkspaceState(); // Lưu dữ liệu công việc (cục bộ)
         return project;
     }
 
@@ -206,7 +216,7 @@ class UserService {
     async deleteProject(projectId: string): Promise<void> {
         await this.ensureInitialized();
         projects = projects.filter(p => p.id !== projectId);
-        saveWorkspaceState(); // Save workspace data
+        saveWorkspaceState(); // Lưu dữ liệu công việc (cục bộ)
     }
 }
 
