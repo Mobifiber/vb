@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Part } from "@google/genai";
 import { SummarizeTask, DraftTask, ReviewTask, Suggestion, ToneStyle, DetailLevel, SecurityWarning, Dictionary, MultiDocumentInput } from '../types';
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 if (!API_KEY) {
   console.warn("API_KEY environment variable is not set.");
