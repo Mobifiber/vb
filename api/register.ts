@@ -5,13 +5,13 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
 ) {
-  // --- THÊM ĐOẠN NÀY ---
+  // --- ĐOẠN SỬA LỖI 405 ---
   // Xử lý yêu cầu CORS preflight (OPTIONS)
   if (request.method === 'OPTIONS') {
     response.status(200).end();
     return;
   }
-  // --- KẾT THÚC ĐOẠN THÊM ---
+  // --- KẾT THÚC ĐOẠN SỬA ---
 
   if (request.method !== 'POST') {
     return response.status(405).json({ error: 'Method Not Allowed' });
