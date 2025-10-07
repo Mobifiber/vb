@@ -6,7 +6,7 @@ import { userService } from '../data/mockDB';
 import Card from './common/Card';
 import Button from './common/Button';
 import AIResponseDisplay from './common/AIResponseDisplay';
-import { exportToDocx } from '../../utils/exportUtils';
+import { exportToDocx } from '../utils/exportUtils';
 
 // --- Helper Components defined in the same file ---
 
