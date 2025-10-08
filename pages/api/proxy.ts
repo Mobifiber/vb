@@ -1,7 +1,9 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { GoogleGenAI, Type, Part, Suggestion, Dictionary } from "@google/genai";
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenAI, Type } from "@google/genai";
 import * as db from '../../lib/db';
 import { ReviewTask, SummarizeTask, DraftTask } from '../../types';
+import type { Part, Suggestion, Dictionary } from '../../types';
+
 
 // Initialize the Gemini AI client on the server
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -26,7 +28,7 @@ const generateContent = async (prompt: string, configOverrides: object = {}): Pr
 };
 
 // --- API Handler ---
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
@@ -154,7 +156,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
                 case 'review': {
                     const { text, dictionary, desiredTone } = body;
-                    const reviewSchema = { /* ... your schema ... */ };
+                     const reviewSchema = {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                original: { type: Type.STRING, description: "Đoạn văn bản gốc có lỗi." },
+                                suggestion: { type: Type.STRING, description: "Đoạn văn bản đã được sửa lại cho đúng." },
+                                reason: { type: Type.STRING, description: "Giải thích ngắn gọn lý do tại sao cần sửa đổi." },
+                            },
+                            required: ["original", "suggestion", "reason"],
+                            propertyOrdering: ["original", "suggestion", "reason"],
+                        },
+                    };
                     // Simplified prompt for brevity
                     const prompt = `Rà soát toàn diện văn bản sau, cung cấp kết quả dưới dạng JSON (original, suggestion, reason). Văn bản: \n\n${text}`;
                     const responseText = await generateContent(prompt, { responseMimeType: "application/json", responseSchema: reviewSchema });
@@ -168,7 +182,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
                  case 'securityCheck': {
                     const { text } = body;
-                    const securitySchema = { /* ... your schema ... */ };
+                    const securitySchema = {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                text: { type: Type.STRING, description: "Đoạn văn bản chứa thông tin có khả năng nhạy cảm." },
+                                reason: { type: Type.STRING, description: "Lý do tại sao thông tin này được coi là nhạy cảm (ví dụ: tên riêng, cấp bậc, số liệu mật)." },
+                            },
+                            required: ["text", "reason"],
+                            propertyOrdering: ["text", "reason"],
+                        },
+                    };
                     const prompt = `Quét văn bản sau để phát hiện thông tin nhạy cảm (tên, cấp bậc, đơn vị, số liệu). Trả về JSON (text, reason). Văn bản:\n\n${text}`;
                     const responseText = await generateContent(prompt, { responseMimeType: "application/json", responseSchema: securitySchema });
                      try {
