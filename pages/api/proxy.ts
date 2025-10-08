@@ -5,14 +5,19 @@ import { ReviewTask, SummarizeTask, DraftTask } from '../../types';
 import type { Part, Suggestion, Dictionary } from '../../types';
 
 
-// Add a check for the environment variable to satisfy TypeScript and ensure runtime safety.
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-    throw new Error("The API_KEY environment variable is not set. Please configure it in your Vercel project settings.");
+// Helper function to get the API key safely.
+// This makes the contract clear to TypeScript: it either returns a string or throws an error.
+function getApiKey(): string {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("The API_KEY environment variable is not set. Please configure it in your Vercel project settings.");
+    }
+    return apiKey;
 }
 
 // Initialize the Gemini AI client on the server
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
 const SYSTEM_INSTRUCTION = `Bạn là một trợ lý AI chuyên nghiệp, được đào tạo để hỗ trợ cán bộ, trợ lý trong các đơn vị hành chính và lực lượng vũ trang (LLVT), Công an Nhân dân (CAND) Việt Nam. 
 - Luôn sử dụng văn phong hành chính trang trọng, chính xác, khách quan.
 - Sử dụng chính xác thuật ngữ, từ viết tắt chuyên ngành của LLVT và CAND.
@@ -30,7 +35,7 @@ const generateContent = async (prompt: string, configOverrides: object = {}): Pr
             ...configOverrides
         }
     });
-    return response.text;
+    return response.text ?? '';
 };
 
 // --- API Handler ---
