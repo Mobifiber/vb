@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import mammoth from 'mammoth';
-import { SummarizeTask, MultiDocumentInput } from '../types';
+import { SummarizeTask, MultiDocumentInput, User, IUserService } from '../types';
 import { processSummarizeTask, extractTextFromFile } from '../services/geminiService';
-import { userService } from '../data/mockDB';
 import Card from './common/Card';
 import Button from './common/Button';
 import AIResponseDisplay from './common/AIResponseDisplay';
@@ -11,6 +10,8 @@ interface SummarizeModuleProps {
     onTaskComplete: () => void;
     isQuotaExhausted: boolean;
     onSendToDrafting: (content: string) => void;
+    user: User;
+    userService: IUserService;
 }
 
 const createNewDocument = (): MultiDocumentInput => ({
@@ -20,7 +21,7 @@ const createNewDocument = (): MultiDocumentInput => ({
     fileName: '',
 });
 
-const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuotaExhausted, onSendToDrafting }) => {
+const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuotaExhausted, onSendToDrafting, user, userService }) => {
     const [documents, setDocuments] = useState<MultiDocumentInput[]>([
         { ...createNewDocument(), source: 'Nguồn 1' }
     ]);
@@ -28,6 +29,8 @@ const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuo
     const [result, setResult] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [ocrStates, setOcrStates] = useState<Record<number, boolean>>({});
+    
+    const isDemo = useMemo(() => user.username === 'demo', [user.username]);
 
     const setOcrLoading = (id: number, isLoading: boolean) => {
         setOcrStates(prev => ({ ...prev, [id]: isLoading }));
@@ -66,10 +69,10 @@ const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuo
                     const base64String = (reader.result as string).split(',')[1];
                     const mimeType = file.type;
                     const filePart = { inlineData: { mimeType, data: base64String } };
-                    const extractedText = await extractTextFromFile(filePart);
+                    const extractedText = await extractTextFromFile(user.id, isDemo, filePart);
                     handleDocumentChange(id, 'content', extractedText);
-                } catch (e) {
-                    handleDocumentChange(id, 'content', `Lỗi: không thể xử lý tệp ${file.name}.`);
+                } catch (e: any) {
+                    handleDocumentChange(id, 'content', `Lỗi: ${e.message || 'không thể xử lý tệp'}`);
                 } finally {
                     setOcrLoading(id, false);
                 }
@@ -106,15 +109,15 @@ const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuo
         setIsLoading(true);
         setResult('');
         try {
-            const response = await processSummarizeTask(task, firstDocContent);
+            const response = await processSummarizeTask(user.id, isDemo, task, firstDocContent);
             setResult(response);
             onTaskComplete();
-        } catch (error) {
-            setResult('Đã có lỗi xảy ra. Vui lòng thử lại.');
+        } catch (error: any) {
+            setResult(`Đã có lỗi xảy ra: ${error.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [documents, onTaskComplete, isQuotaExhausted]);
+    }, [documents, onTaskComplete, isQuotaExhausted, user.id, isDemo]);
 
     const handleMultiDocTask = useCallback(async (task: SummarizeTask.MULTI_DOC_SUMMARY | SummarizeTask.ANALYZE_AND_SUGGEST) => {
         const docsWithContent = documents.filter(d => d.content.trim());
@@ -122,15 +125,15 @@ const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuo
         setIsLoading(true);
         setResult('');
         try {
-            const response = await processSummarizeTask(task, docsWithContent);
+            const response = await processSummarizeTask(user.id, isDemo, task, docsWithContent);
             setResult(response);
             onTaskComplete();
-        } catch (error) {
-            setResult('Đã có lỗi xảy ra. Vui lòng thử lại.');
+        } catch (error: any) {
+            setResult(`Đã có lỗi xảy ra: ${error.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [documents, onTaskComplete, isQuotaExhausted]);
+    }, [documents, onTaskComplete, isQuotaExhausted, user.id, isDemo]);
 
     const handleCustomRequest = useCallback(async () => {
         const docsWithContent = documents.filter(d => d.content.trim());
@@ -140,21 +143,21 @@ const SummarizeModule: React.FC<SummarizeModuleProps> = ({ onTaskComplete, isQuo
         setResult('');
         try {
             const dataForApi = documents.length > 1 ? docsWithContent : documents[0].content;
-            const response = await processSummarizeTask(SummarizeTask.CUSTOM_REQUEST, dataForApi, customRequest);
+            const response = await processSummarizeTask(user.id, isDemo, SummarizeTask.CUSTOM_REQUEST, dataForApi, customRequest);
             setResult(response);
             onTaskComplete();
-        } catch (error) {
-            setResult('Đã có lỗi xảy ra. Vui lòng thử lại.');
+        } catch (error: any) {
+            setResult(`Đã có lỗi xảy ra: ${error.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [documents, customRequest, onTaskComplete, isQuotaExhausted]);
+    }, [documents, customRequest, onTaskComplete, isQuotaExhausted, user.id, isDemo]);
 
     const handleSaveToWorkspace = async (content: string) => {
         const projectName = window.prompt("Nhập tên dự án để lưu kết quả phân tích:", "");
         if (projectName && projectName.trim()) {
             try {
-                await userService.saveResultToWorkspace(projectName.trim(), 'analysis', content);
+                await userService.saveResultToWorkspace(user.id, projectName.trim(), 'analysis', content);
                 alert(`Đã lưu kết quả vào dự án "${projectName.trim()}" thành công!`);
             } catch (error) {
                 alert("Đã xảy ra lỗi khi lưu vào Không gian làm việc.");

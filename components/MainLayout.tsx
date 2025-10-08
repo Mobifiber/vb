@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Module, User } from '../types';
+import { Module, User, IUserService } from '../types';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import Dashboard from './Dashboard';
@@ -9,16 +9,15 @@ import ReviewModule from './ReviewModule';
 import AdminModule from './AdminModule';
 import WorkspaceModule from './WorkspaceModule';
 import ChangePasswordModal from './ChangePasswordModal';
-import { userService } from '../data/mockDB';
-
 
 interface MainLayoutProps {
   user: User;
   onLogout: () => void;
   onUpdateUser: (user: User) => void;
+  userService: IUserService;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser, userService }) => {
   const [activeModule, setActiveModule] = useState<Module>(Module.Dashboard);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [workflowData, setWorkflowData] = useState<string | null>(null);
@@ -27,12 +26,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser })
     setActiveModule(module);
   }, []);
 
-  const incrementUsage = useCallback(() => {
-    if (user.quota.used < user.quota.total) {
-      const updatedUser = { ...user, quota: { ...user.quota, used: user.quota.used + 1 } };
+  const incrementUsage = useCallback(async () => {
+    if (userService.incrementUsage) {
+      // This is the demo service, which handles local storage updates
+      const updatedUser = await userService.incrementUsage();
       onUpdateUser(updatedUser);
+    } else {
+      // This is the real service. The backend handles the actual increment.
+      // We just update the frontend state for a responsive UI.
+      if (user.quota.used < user.quota.total) {
+        const updatedUser = { ...user, quota: { ...user.quota, used: user.quota.used + 1 } };
+        onUpdateUser(updatedUser);
+      }
     }
-  }, [user, onUpdateUser]);
+  }, [user, onUpdateUser, userService]);
 
   const handlePasswordChange = async (oldPass: string, newPass: string): Promise<boolean> => {
       const success = await userService.changePassword(user.id, oldPass, newPass);
@@ -63,12 +70,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser })
       case Module.Dashboard:
         return <Dashboard usage={user.quota.used} totalQuota={user.quota.total} />;
       case Module.Workspace:
-        return <WorkspaceModule />;
+        return <WorkspaceModule user={user} userService={userService} />;
       case Module.Summarize:
         return <SummarizeModule 
                   onTaskComplete={incrementUsage} 
                   isQuotaExhausted={isQuotaExhausted} 
                   onSendToDrafting={handleSendToDrafting}
+                  user={user}
+                  userService={userService}
                />;
       case Module.Drafting:
         return <DraftingModule 
@@ -77,6 +86,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser })
                   onSendToReview={handleSendToReview}
                   initialIdeas={workflowData}
                   onDataReceived={clearWorkflowData}
+                  user={user}
+                  userService={userService}
                />;
       case Module.Review:
         return <ReviewModule 
@@ -84,9 +95,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, onUpdateUser })
                   isQuotaExhausted={isQuotaExhausted}
                   initialText={workflowData}
                   onDataReceived={clearWorkflowData}
+                  user={user}
+                  userService={userService}
                />;
       case Module.Admin:
-        return user.role === 'superadmin' ? <AdminModule /> : <p>Bạn không có quyền truy cập vào mục này.</p>;
+        return user.role === 'superadmin' ? <AdminModule userService={userService} /> : <p>Bạn không có quyền truy cập vào mục này.</p>;
       default:
         return <Dashboard usage={user.quota.used} totalQuota={user.quota.total} />;
     }

@@ -1,3 +1,12 @@
+// Fix: Add Part interface for handling file data for Gemini API.
+export interface Part {
+    inlineData?: {
+        mimeType: string;
+        data: string;
+    };
+    text?: string;
+}
+
 export enum Module {
   Dashboard = 'Dashboard',
   Workspace = 'Không gian Làm việc',
@@ -109,4 +118,20 @@ export interface Project {
     analysisResult?: string;
     draftResult?: string;
     reviewResult?: string;
+}
+
+// --- Service Interface ---
+export interface IUserService {
+    authenticate(username: string, password: string): Promise<User | null>;
+    getAllUsers(): Promise<User[]>;
+    updateUser(updatedUser: User): Promise<User>;
+    changePassword(userId: number, oldPass: string, newPass: string): Promise<boolean>;
+    resetPassword(userId: number): Promise<string>;
+    getDictionaries(): Promise<Dictionary[]>;
+    addDictionary(name: string, content: string): Promise<Dictionary>;
+    saveResultToWorkspace(userId: number, projectName: string, resultType: ProjectResultType, content: string): Promise<Project>;
+    getProjects(userId: number): Promise<Project[]>;
+    deleteProject(userId: number, projectId: string): Promise<void>;
+    // This method is specific to the demo service for local quota management
+    incrementUsage?(): Promise<User>;
 }

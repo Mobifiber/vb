@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Dictionary } from '../types';
-import { userService } from '../data/mockDB';
+import { User, Dictionary, IUserService } from '../types';
 import Card from './common/Card';
 import Button from './common/Button';
 import EditQuotaModal from './EditQuotaModal';
 
-const AdminModule: React.FC = () => {
+interface AdminModuleProps {
+    userService: IUserService;
+}
+
+const AdminModule: React.FC<AdminModuleProps> = ({ userService }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -18,12 +21,18 @@ const AdminModule: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
-    const userList = await userService.getAllUsers();
-    const dictList = await userService.getDictionaries();
-    setUsers(userList.filter(u => u.role !== 'superadmin'));
-    setDictionaries(dictList);
-    setIsLoading(false);
-  }, []);
+    try {
+        const userList = await userService.getAllUsers();
+        const dictList = await userService.getDictionaries();
+        setUsers(userList.filter(u => u.role !== 'superadmin'));
+        setDictionaries(dictList);
+    } catch (error) {
+        console.error("Failed to fetch admin data:", error);
+        setNotification("Không thể tải dữ liệu quản trị.");
+    } finally {
+        setIsLoading(false);
+    }
+  }, [userService]);
 
   useEffect(() => {
     fetchData();
@@ -31,9 +40,13 @@ const AdminModule: React.FC = () => {
 
   const handleResetPassword = async (userId: number) => {
     if (window.confirm('Bạn có chắc muốn đặt lại mật khẩu cho người dùng này?')) {
-        const newPassword = await userService.resetPassword(userId);
-        setNotification(`Mật khẩu mới là: ${newPassword}. Vui lòng sao chép và gửi cho người dùng.`);
-        setTimeout(() => setNotification(''), 15000); // Clear notification after 15s
+        try {
+            const newPassword = await userService.resetPassword(userId);
+            setNotification(`Mật khẩu mới là: ${newPassword}. Vui lòng sao chép và gửi cho người dùng.`);
+            setTimeout(() => setNotification(''), 15000); // Clear notification after 15s
+        } catch (error: any) {
+            setNotification(`Lỗi: ${error.message}`);
+        }
     }
   };
   
@@ -46,12 +59,16 @@ const AdminModule: React.FC = () => {
   const handleAddNewDictionary = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newDictName.trim() && newDictContent.trim()) {
-        await userService.addDictionary(newDictName, newDictContent);
-        setNewDictName('');
-        setNewDictContent('');
-        fetchData(); // This will refresh the list from the service
-        setNotification(`Đã thêm từ điển "${newDictName}" thành công.`);
-        setTimeout(() => setNotification(''), 5000);
+        try {
+            const newDict = await userService.addDictionary(newDictName, newDictContent);
+            setNewDictName('');
+            setNewDictContent('');
+            fetchData(); // This will refresh the list from the service
+            setNotification(`Đã thêm từ điển "${newDict.name}" thành công.`);
+            setTimeout(() => setNotification(''), 5000);
+        } catch(error: any) {
+             setNotification(`Lỗi: ${error.message}`);
+        }
     }
 };
 
@@ -64,7 +81,7 @@ const AdminModule: React.FC = () => {
       <h1 className="text-3xl font-bold text-gray-800 mb-6">Quản trị Viên</h1>
       {notification && (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
-          <strong className="font-bold">Thành công! </strong>
+          <strong className="font-bold">Thông báo: </strong>
           <span className="block sm:inline">{notification}</span>
         </div>
       )}

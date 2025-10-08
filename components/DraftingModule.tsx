@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import mammoth from 'mammoth';
-import { DraftTask, DOCUMENT_TYPES, ToneStyle, DetailLevel, DraftTemplateField } from '../types';
+import { DraftTask, DOCUMENT_TYPES, ToneStyle, DetailLevel, DraftTemplateField, User, IUserService } from '../types';
 import { processDraftTask, extractTextFromFile } from '../services/geminiService';
-import { userService } from '../data/mockDB';
 import Card from './common/Card';
 import Button from './common/Button';
 import AIResponseDisplay from './common/AIResponseDisplay';
@@ -13,6 +12,8 @@ interface DraftingModuleProps {
     onSendToReview: (content: string) => void;
     initialIdeas: string | null;
     onDataReceived: () => void;
+    user: User;
+    userService: IUserService;
 }
 
 const DRAFT_TEMPLATES: Record<string, DraftTemplateField[]> = {
@@ -27,7 +28,7 @@ const DRAFT_TEMPLATES: Record<string, DraftTemplateField[]> = {
 
 const CUSTOM_DOC_TYPE_REQUEST = "Yêu cầu soạn thảo khác...";
 
-const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuotaExhausted, onSendToReview, initialIdeas, onDataReceived }) => {
+const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuotaExhausted, onSendToReview, initialIdeas, onDataReceived, user, userService }) => {
     const [ideas, setIdeas] = useState('');
     const [templateData, setTemplateData] = useState<Record<string, string>>({});
     const [referenceText, setReferenceText] = useState('');
@@ -38,6 +39,8 @@ const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuota
     const [result, setResult] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     
+    const isDemo = useMemo(() => user.username === 'demo', [user.username]);
+
     // OCR loading states for different inputs
     const [isRefOcrLoading, setIsRefOcrLoading] = useState(false);
     const [isIdeasOcrLoading, setIsIdeasOcrLoading] = useState(false);
@@ -90,15 +93,15 @@ const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuota
             }
 
             const finalDocType = docType === CUSTOM_DOC_TYPE_REQUEST ? "văn bản theo yêu cầu" : docType;
-            const response = await processDraftTask(task, inputData, finalDocType, style, detailLevel, referenceText, customDraftRequest);
+            const response = await processDraftTask(user.id, isDemo, task, inputData, finalDocType, style, detailLevel, referenceText, customDraftRequest);
             setResult(response);
             onTaskComplete();
-        } catch (error) {
-            setResult('Đã có lỗi xảy ra. Vui lòng thử lại.');
+        } catch (error: any) {
+            setResult(`Đã có lỗi xảy ra: ${error.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [ideas, docType, style, detailLevel, onTaskComplete, isQuotaExhausted, isInputEmpty, showTemplate, activeTemplate, templateData, referenceText, customDraftRequest]);
+    }, [ideas, docType, style, detailLevel, onTaskComplete, isQuotaExhausted, isInputEmpty, showTemplate, activeTemplate, templateData, referenceText, customDraftRequest, user.id, isDemo]);
     
     const handleDocTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newDocType = e.target.value;
@@ -132,10 +135,10 @@ const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuota
                     const base64String = (reader.result as string).split(',')[1];
                     const mimeType = file.type;
                     const filePart = { inlineData: { mimeType, data: base64String } };
-                    const extractedText = await extractTextFromFile(filePart);
+                    const extractedText = await extractTextFromFile(user.id, isDemo, filePart);
                     setText(extractedText);
-                } catch (e) {
-                    setText(`Lỗi: không thể xử lý tệp ${file.name}.`);
+                } catch (e: any) {
+                    setText(`Lỗi: ${e.message || 'không thể xử lý tệp'}`);
                 } finally {
                     setLoading(false);
                 }
@@ -169,7 +172,7 @@ const DraftingModule: React.FC<DraftingModuleProps> = ({ onTaskComplete, isQuota
         const projectName = window.prompt("Nhập tên dự án để lưu văn bản soạn thảo:", "");
         if (projectName && projectName.trim()) {
             try {
-                await userService.saveResultToWorkspace(projectName.trim(), 'drafting', content);
+                await userService.saveResultToWorkspace(user.id, projectName.trim(), 'drafting', content);
                 alert(`Đã lưu kết quả vào dự án "${projectName.trim()}" thành công!`);
             } catch (error) {
                 alert("Đã xảy ra lỗi khi lưu vào Không gian làm việc.");

@@ -5,8 +5,8 @@ interface LoginPageProps {
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('user');
+  const [password, setPassword] = useState('123456');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,26 +33,42 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <p className="mt-2 text-sm text-gray-600">Nền tảng AI chuyên dụng cho nghiệp vụ</p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleLoginAttempt}>
-             <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">Tên người dùng</label>
-              <input
-                id="username" name="username" type="text" required
-                className="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 border border-gray-300 rounded-none appearance-none rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Tên người dùng" value={username} onChange={(e) => setUsername(e.target.value)} disabled={isLoading}
-              />
-            </div>
-            <div>
-              <label htmlFor="password-input" className="sr-only">Mật khẩu</label>
-              <input
-                id="password-input" name="password" type="password" required
-                className="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 border border-gray-300 rounded-none appearance-none rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Mật khẩu" value={password} onChange={(e) => setPassword(e.target.value)} disabled={isLoading}
-              />
-            </div>
-          </div>
+          <div className="rounded-md shadow-sm -space-y-px">
+            <div>
+              <label htmlFor="username" className="sr-only">Tên người dùng</label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                className="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 border border-gray-300 rounded-none appearance-none rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Tên người dùng"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+            <div>
+              <label htmlFor="password-input" className="sr-only">Mật khẩu</label>
+              <input
+                id="password-input"
+                name="password"
+                type="password"
+                required
+                className="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 border border-gray-300 rounded-none appearance-none rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Mật khẩu"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
           
           {error && <p className="text-sm text-center text-red-500">{error}</p>}
+          
+          <p className="text-xs text-center text-gray-500">
+            Để dùng thử, sử dụng Tên đăng nhập: <strong>demo</strong> / Mật khẩu: <strong>demo</strong>
+          </p>
 
           <div>
             <button type="submit" className="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md group hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400" disabled={isLoading}>
@@ -66,4 +82,3 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 };
 
 export default LoginPage;
-

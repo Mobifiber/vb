@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import mammoth from 'mammoth';
-import { ReviewTask, Suggestion, SecurityWarning, Dictionary, ToneStyle, DetailLevel } from '../types';
+import { ReviewTask, Suggestion, SecurityWarning, Dictionary, ToneStyle, DetailLevel, User, IUserService } from '../types';
 import { processReviewTask, processSecurityCheck, evaluateEffectiveness, processSourceConsistencyCheck, extractTextFromFile, refineText } from '../services/geminiService';
-import { userService } from '../data/mockDB';
 import Card from './common/Card';
 import Button from './common/Button';
 import AIResponseDisplay from './common/AIResponseDisplay';
@@ -138,9 +137,11 @@ interface ReviewModuleProps {
     isQuotaExhausted: boolean;
     initialText: string | null;
     onDataReceived: () => void;
+    user: User;
+    userService: IUserService;
 }
 
-const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExhausted, initialText, onDataReceived }) => {
+const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExhausted, initialText, onDataReceived, user, userService }) => {
     const [inputText, setInputText] = useState('');
     const [sourceText, setSourceText] = useState('');
     const [modifiedText, setModifiedText] = useState('');
@@ -156,6 +157,8 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
     const [error, setError] = useState('');
     const [view, setView] = useState<'input' | 'review' | 'diff'>('input');
     
+    const isDemo = useMemo(() => user.username === 'demo', [user.username]);
+
     const [isReviewTextLoading, setIsReviewTextLoading] = useState(false);
     const [isSourceTextLoading, setIsSourceTextLoading] = useState(false);
     const [reviewFileName, setReviewFileName] = useState('');
@@ -167,7 +170,7 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
 
     useEffect(() => {
         userService.getDictionaries().then(setDictionaries);
-    }, []);
+    }, [userService]);
 
     useEffect(() => {
         if (initialText) {
@@ -202,10 +205,10 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
                     const base64String = (reader.result as string).split(',')[1];
                     const mimeType = file.type;
                     const filePart = { inlineData: { mimeType, data: base64String } };
-                    const extractedText = await extractTextFromFile(filePart);
+                    const extractedText = await extractTextFromFile(user.id, isDemo, filePart);
                     setText(extractedText);
-                } catch (e) {
-                    setText(`Lỗi: không thể xử lý tệp ${file.name}.`);
+                } catch (e: any) {
+                    setText(`Lỗi: ${e.message || 'không thể xử lý tệp'}`);
                 } finally {
                     setLoading(false);
                 }
@@ -249,7 +252,7 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
                 setLoadingMessage('AI đang phân tích và rà soát văn bản...');
                 setView('review');
                 const selectedDict = dictionaries.find(d => d.id === selectedDictId);
-                const response = await processReviewTask(ReviewTask.CHECK_ALL, inputText, selectedDict, desiredTone || undefined);
+                const response = await processReviewTask(user.id, isDemo, ReviewTask.CHECK_ALL, inputText, selectedDict, desiredTone || undefined);
                 setSuggestions(response);
                 setModifiedText(inputText);
                 if (response.length === 0) {
@@ -257,24 +260,24 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
                 }
             } else if (task === ReviewTask.SENSITIVITY_CHECK) {
                 setLoadingMessage('AI đang quét các thông tin nhạy cảm...');
-                const warnings = await processSecurityCheck(inputText);
+                const warnings = await processSecurityCheck(user.id, isDemo, inputText);
                 setSecurityWarnings(warnings);
                  if (warnings.length === 0) {
                     alert("Không phát hiện thông tin nhạy cảm nào.");
                 }
             } else if (task === ReviewTask.EVALUATE_EFFECTIVENESS) {
                 setLoadingMessage('AI đang đánh giá hiệu quả văn bản...');
-                const report = await evaluateEffectiveness(inputText);
+                const report = await evaluateEffectiveness(user.id, isDemo, inputText);
                 setEffectivenessReport(report);
             }
             onTaskComplete();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Đã có lỗi xảy ra.');
+        } catch (err: any) {
+            setError(err.message || 'Đã có lỗi xảy ra.');
             if (task === ReviewTask.CHECK_ALL) setView('input');
         } finally {
             setIsLoading(false);
         }
-    }, [inputText, onTaskComplete, isQuotaExhausted, dictionaries, selectedDictId, desiredTone]);
+    }, [inputText, onTaskComplete, isQuotaExhausted, dictionaries, selectedDictId, desiredTone, user.id, isDemo]);
     
     const handleSourceCheck = useCallback(async () => {
         if (!inputText.trim() || !sourceText.trim() || isQuotaExhausted) return;
@@ -285,15 +288,15 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
         setSecurityWarnings([]);
         setConsistencyReport('');
         try {
-            const report = await processSourceConsistencyCheck(inputText, sourceText);
+            const report = await processSourceConsistencyCheck(user.id, isDemo, inputText, sourceText);
             setConsistencyReport(report);
             onTaskComplete();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi đối chiếu nguồn.');
+        } catch (err: any) {
+            setError(err.message || 'Đã có lỗi xảy ra khi đối chiếu nguồn.');
         } finally {
             setIsLoading(false);
         }
-    }, [inputText, sourceText, onTaskComplete, isQuotaExhausted]);
+    }, [inputText, sourceText, onTaskComplete, isQuotaExhausted, user.id, isDemo]);
 
     const handleAccept = (id: number) => {
         const suggestion = suggestions.find(s => s.id === id);
@@ -331,7 +334,7 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
         const projectName = window.prompt("Nhập tên dự án để lưu văn bản đã hoàn thiện:", "");
         if (projectName && projectName.trim()) {
             try {
-                await userService.saveResultToWorkspace(projectName.trim(), 'review', contentToSave);
+                await userService.saveResultToWorkspace(user.id, projectName.trim(), 'review', contentToSave);
                 alert(`Đã lưu kết quả vào dự án "${projectName.trim()}" thành công!`);
             } catch (error) {
                 alert("Đã xảy ra lỗi khi lưu vào Không gian làm việc.");
@@ -346,14 +349,14 @@ const ReviewModule: React.FC<ReviewModuleProps> = ({ onTaskComplete, isQuotaExha
         setIsRefining(true);
         setError('');
         try {
-            const refinedContent = await refineText(modifiedText, refineTone, refineDetailLevel);
+            const refinedContent = await refineText(user.id, isDemo, modifiedText, refineTone, refineDetailLevel);
             setModifiedText(refinedContent);
             onTaskComplete(); // Count this as one usage
             // Reset dropdowns after use to indicate completion and prevent accidental re-clicks
             setRefineTone('');
             setRefineDetailLevel('');
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi tinh chỉnh văn bản.');
+        } catch (err: any) {
+            setError(err.message || 'Đã có lỗi xảy ra khi tinh chỉnh văn bản.');
         } finally {
             setIsRefining(false);
         }
