@@ -1,116 +1,104 @@
-import { SummarizeTask, DraftTask, ReviewTask, Suggestion, ToneStyle, DetailLevel, SecurityWarning, Dictionary, MultiDocumentInput, Part } from '../types';
+import { GoogleGenAI, Part } from "@google/genai";
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { AIModel, ReviewResult } from '../types'; // Đảm bảo đường dẫn này đúng
 
-// This function now acts as a client to our own backend API
-async function callApi<T>(body: object): Promise<T> {
-    const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
+// Khởi tạo an toàn trên server
+if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable not set.");
+}
+const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Đã xảy ra lỗi khi kết nối với máy chủ.');
+// Xử lý các yêu cầu từ frontend
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const { action, payload } = req.body;
+
+  try {
+    let resultData: any;
+
+    // Hàm helper để kiểm tra response và lấy text một cách an toàn
+    const getResponseText = (response: any): string => {
+        if (!response || !response.response || !response.response.candidates || response.response.candidates.length === 0) {
+            const blockReason = response?.response?.promptFeedback?.blockReason;
+            if (blockReason) {
+                throw new Error(`Yêu cầu bị AI từ chối vì lý do an toàn: ${blockReason}`);
+            }
+            throw new Error("AI không trả về nội dung hợp lệ.");
+        }
+        return response.response.text();
+    };
+
+    switch (action) {
+      case 'summarize': {
+        const { text, instructions, files, model } = payload;
+        // ... (phần code xây dựng summarizeContents giữ nguyên)
+        let summarizeContents: any;
+        if (files && files.length > 0) {
+            const promptText = `Dựa vào hướng dẫn sau: "${instructions}", hãy phân tích nội dung được cung cấp...`;
+            const parts: Part[] = [{ text: promptText }];
+            if (text.trim()) parts.push({ text: `---VĂN BẢN BỔ SUNG---\n${text}` });
+            for (const file of files) parts.push({ inlineData: { mimeType: file.mimeType, data: file.base64 } });
+            summarizeContents = [{ parts }];
+        } else {
+            summarizeContents = `Dựa vào hướng dẫn sau: "${instructions}", hãy phân tích văn bản dưới đây...\n---\n${text}`;
+        }
+        
+        const result = await ai.models.generateContent({
+            model: model,
+            contents: Array.isArray(summarizeContents) ? summarizeContents : [{ parts: [{ text: summarizeContents }] }]
+        });
+        resultData = getResponseText(result);
+        break;
+      }
+
+      case 'draft': {
+        const { topic, instructions, model, systemInstruction } = payload;
+        const draftPrompt = `Dựa vào hướng dẫn sau: "${instructions}", hãy soạn thảo văn bản...\n---\n${topic}\n---...`;
+
+        const result = await ai.models.generateContent({
+            model: model,
+            contents: [{ parts: [{ text: draftPrompt }] }],
+            systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+        });
+        resultData = getResponseText(result);
+        break;
+      }
+        
+      case 'review': {
+        const { text, instructions, model, file } = payload;
+        const reviewPrompt = `Bạn là một trợ lý chuyên nghiệp... HƯỚNG DẪN: "${instructions}"...`;
+        const reviewParts: Part[] = [{ text: reviewPrompt }];
+        if (text) reviewParts.push({ text: text });
+        if (file) reviewParts.push({ inlineData: { mimeType: file.mimeType, data: file.base64 } });
+
+        const result = await ai.models.generateContent({
+            model: model,
+            contents: [{ parts: reviewParts }],
+            generationConfig: { responseMimeType: 'application/json' }
+        });
+        
+        // JSON response cũng cần được kiểm tra an toàn
+        const jsonResponse = getResponseText(result).trim();
+        const cleanedJson = jsonResponse.replace(/^```json\s*|```\s*$/g, '');
+        resultData = JSON.parse(cleanedJson) as ReviewResult;
+        break;
+      }
+
+      default:
+        return res.status(400).json({ error: 'Invalid action' });
     }
 
-    const data = await response.json();
-    return data.result;
+    res.status(200).json(resultData);
+
+  } catch (error: any) {
+    console.error(`Error in API action '${action}':`, error);
+    // Trả về thông báo lỗi chi tiết hơn cho frontend
+    res.status(500).json({ error: `Server error during '${action}': ${error.message}` });
+  }
 }
-
-
-export const extractTextFromFile = async (userId: number, isDemo: boolean, filePart: Part): Promise<string> => {
-    return callApi<string>({
-        action: 'extractText',
-        userId,
-        isDemoUser: isDemo,
-        filePart
-    });
-};
-
-export const processSummarizeTask = async (userId: number, isDemo: boolean, task: SummarizeTask, data: string | MultiDocumentInput[], customRequest?: string): Promise<string> => {
-    return callApi<string>({
-        action: 'summarize',
-        userId,
-        isDemoUser: isDemo,
-        task,
-        data,
-        customRequest
-    });
-};
-
-export const processDraftTask = async (
-    userId: number, isDemo: boolean,
-    task: DraftTask, 
-    ideas: string | Record<string, string>, 
-    docType: string, 
-    style: ToneStyle, 
-    detailLevel: DetailLevel,
-    referenceText?: string,
-    customRequest?: string
-): Promise<string> => {
-    return callApi<string>({
-        action: 'draft',
-        userId,
-        isDemoUser: isDemo,
-        task,
-        ideas,
-        docType,
-        style,
-        detailLevel,
-        referenceText,
-        customRequest
-    });
-};
-
-export const processReviewTask = async (userId: number, isDemo: boolean, task: ReviewTask, text: string, dictionary?: Dictionary, desiredTone?: ToneStyle): Promise<Suggestion[]> => {
-     return callApi<Suggestion[]>({
-        action: 'review',
-        userId,
-        isDemoUser: isDemo,
-        task,
-        text,
-        dictionary,
-        desiredTone
-    });
-};
-
-export const evaluateEffectiveness = async (userId: number, isDemo: boolean, text: string): Promise<string> => {
-    return callApi<string>({
-        action: 'evaluateEffectiveness',
-        userId,
-        isDemoUser: isDemo,
-        text
-    });
-};
-
-export const processSecurityCheck = async (userId: number, isDemo: boolean, text: string): Promise<SecurityWarning[]> => {
-    return callApi<SecurityWarning[]>({
-        action: 'securityCheck',
-        userId,
-        isDemoUser: isDemo,
-        text
-    });
-};
-
-export const processSourceConsistencyCheck = async (userId: number, isDemo: boolean, text: string, sourceText: string): Promise<string> => {
-     return callApi<string>({
-        action: 'consistencyCheck',
-        userId,
-        isDemoUser: isDemo,
-        text,
-        sourceText
-    });
-};
-
-export const refineText = async (userId: number, isDemo: boolean, text: string, tone: ToneStyle, detailLevel: DetailLevel): Promise<string> => {
-    return callApi<string>({
-        action: 'refineText',
-        userId,
-        isDemoUser: isDemo,
-        text,
-        tone,
-        detailLevel
-    });
-};
