@@ -23,24 +23,30 @@ export default async function handler(
     let resultData: any;
 
     // Hàm helper để kiểm tra response và lấy text một cách an toàn
-    const getResponseText = (response: any): string => {
-        if (!response || !response.response || !response.response.candidates || response.response.candidates.length === 0) {
-            const blockReason = response?.response?.promptFeedback?.blockReason;
-            if (blockReason) {
-                throw new Error(`Yêu cầu bị AI từ chối vì lý do an toàn: ${blockReason}`);
-            }
-            throw new Error("AI không trả về nội dung hợp lệ.");
+    const getResponseText = (result: any): string => {
+        if (!result || !result.response) {
+             throw new Error("AI did not return a valid response structure.");
         }
-        return response.response.text();
+        
+        const candidates = result.response.candidates;
+        if (!candidates || candidates.length === 0) {
+            const blockReason = result.response.promptFeedback?.blockReason;
+            if (blockReason) {
+                throw new Error(`Request was blocked by AI for safety reasons: ${blockReason}`);
+            }
+            // Trả về chuỗi rỗng thay vì gây lỗi
+            return ""; 
+        }
+        // Phương thức text() là một trình trợ giúp để lấy văn bản từ ứng viên đầu tiên
+        return result.response.text();
     };
 
     switch (action) {
       case 'summarize': {
         const { text, instructions, files, model } = payload;
-        // ... (phần code xây dựng summarizeContents giữ nguyên)
         let summarizeContents: any;
         if (files && files.length > 0) {
-            const promptText = `Dựa vào hướng dẫn sau: "${instructions}", hãy phân tích nội dung được cung cấp...`;
+            const promptText = `Dựa vào hướng dẫn sau: "${instructions}", hãy phân tích nội dung...`;
             const parts: Part[] = [{ text: promptText }];
             if (text.trim()) parts.push({ text: `---VĂN BẢN BỔ SUNG---\n${text}` });
             for (const file of files) parts.push({ inlineData: { mimeType: file.mimeType, data: file.base64 } });
@@ -64,7 +70,8 @@ export default async function handler(
         const result = await ai.models.generateContent({
             model: model,
             contents: [{ parts: [{ text: draftPrompt }] }],
-            systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+            // SỬA LỖI: Vô hiệu hóa tạm thời systemInstruction để kiểm tra
+            // systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
         });
         resultData = getResponseText(result);
         break;
@@ -83,7 +90,6 @@ export default async function handler(
             generationConfig: { responseMimeType: 'application/json' }
         });
         
-        // JSON response cũng cần được kiểm tra an toàn
         const jsonResponse = getResponseText(result).trim();
         const cleanedJson = jsonResponse.replace(/^```json\s*|```\s*$/g, '');
         resultData = JSON.parse(cleanedJson) as ReviewResult;
@@ -98,7 +104,6 @@ export default async function handler(
 
   } catch (error: any) {
     console.error(`Error in API action '${action}':`, error);
-    // Trả về thông báo lỗi chi tiết hơn cho frontend
     res.status(500).json({ error: `Server error during '${action}': ${error.message}` });
   }
 }
